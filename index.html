@@ -1,460 +1,410 @@
-import React, { useState, useCallback } from 'react';
-import { Loader2, FileDown, BookOpen, AlertTriangle, CheckCircle, Brain, Target, FileText, ClipboardCheck } from 'lucide-react';
-
-// A curated list of 50 books suitable for 10-11 year olds, as requested.
-const bookList = [
-  { title: "Charlotte's Web", author: "E.B. White" },
-  { title: "The Secret Garden", author: "Frances Hodgson Burnett" },
-  { title: "Matilda", author: "Roald Dahl" },
-  { title: "The Lion, the Witch and the Wardrobe", author: "C.S. Lewis" },
-  { title: "Tom's Midnight Garden", author: "Philippa Pearce" },
-  { title: "Private Peaceful", author: "Michael Morpurgo" },
-  { title: "Goodnight Mister Tom", author: "Michelle Magorian" },
-  { title: "The Borrowers", author: "Mary Norton" },
-  { title: "Stig of the Dump", author: "Clive King" },
-  { title: "Carrie's War", author: "Nina Bawden" },
-  { title: "The Iron Man", author: "Ted Hughes" },
-  { title: "A Little Princess", author: "Frances Hodgson Burnett" },
-  { title: "The Railway Children", author: "E. Nesbit" },
-  { title: "Swallows and Amazons", author: "Arthur Ransome" },
-  { title: "The Wizard of Oz", author: "L. Frank Baum" },
-  { title: "The Hobbit", author: "J.R.R. Tolkien" },
-  { title: "The Wind in the Willows", author: "Kenneth Grahame" },
-  { title: "Peter Pan", author: "J.M. Barrie" },
-  { title: "A Christmas Carol", author: "Charles Dickens" },
-  { title: "The Jungle Book", author: "Rudyard Kipling" },
-  { title: "The Phantom Tollbooth", author: "Norton Juster" },
-  { title: "Journey to the River Sea", author: "Eva Ibbotson" },
-  { title: "Kensuke's Kingdom", author: "Michael Morpurgo" },
-  { title: "A Wrinkle in Time", author: "Madeleine L'Engle" },
-  { title: "Skellig", author: "David Almond" },
-  { title: "The Story of Tracy Beaker", author: "Jacqueline Wilson" },
-  { title: "Millions", author: "Frank Cottrell Boyce" },
-  { title: "The London Eye Mystery", author: "Siobhan Dowd" },
-  { title: "The Dreamsnatcher", author: "Abi Elphinstone" },
-  { title: "Cogheart", author: "Peter Bunzl" },
-  { title: "Floodland", author: "Marcus Sedgwick" },
-  { title: "The House with Chicken Legs", author: "Sophie Anderson" },
-  { title: "The Explorer", author: "Katherine Rundell" },
-  { title: "Asha & The Spirit Bird", author: "Jasbinder Bilan" },
-  { title: "Skandar and the Unicorn Thief", author: "A. F. Steadman" },
-  { title: "Impossible Creatures", author: "Katherine Rundell" },
-  { title: "Holes", author: "Louis Sachar" },
-  { title: "The Northern Lights", author: "Philip Pullman" },
-  { title: "Wonder", author: "R.J. Palacio" },
-  { title: "The Boy in the Striped Pyjamas", author: "John Boyne" },
-  { title: "Wolf Brother", author: "Michelle Paver" },
-  { title: "Varjak Paw", author: "SF Said" },
-  { title: "Holes", author: "Louis Sachar" },
-  { title: "Percy Jackson & The Lightning Thief", author: "Rick Riordan" },
-  { title: "The Girl of Ink & Stars", author: "Kiran Millwood Hargrave" },
-  { title: "Black Beauty", author: "Anna Sewell" },
-  { title: "Little Women", author: "Louisa May Alcott" },
-  { title: "Heidi", author: "Johanna Spyri" },
-  { title: "The Call of the Wild", author: "Jack London" },
-  { title: "Treasure Island", author: "Robert Louis Stevenson" }
-];
-
-// Helper component for loading spinners
-const LoadingSpinner = ({ size = 24 }) => (
-  <Loader2 className={`animate-spin h-${size} w-${size}`} />
-);
-
-// Helper component for info boxes
-const InfoBox = ({ title, icon, children }) => (
-  <div className="bg-white p-8 rounded-lg shadow-md border border-gray-100 flex flex-col items-center text-center">
-    <div className="text-blue-600 mb-4">{icon}</div>
-    <h2 className="text-xl font-semibold text-gray-800 mb-3">{title}</h2>
-    <p className="text-gray-600">{children}</p>
-  </div>
-);
-
-// Main Application Component
-export default function App() {
-  const [selectedBook, setSelectedBook] = useState(null);
-  const [testData, setTestData] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-
-  // Define the JSON schema for the AI response
-  const responseSchema = {
-    type: "OBJECT",
-    properties: {
-      passage: { 
-        type: "STRING",
-        description: "An exact 20-22 line (250-300 word) passage from the book."
-      },
-      questions: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: {
-            question: { type: "STRING", description: "The comprehension question." },
-            marks: { type: "NUMBER", description: "The number of marks (1-3)." }
-          },
-          required: ["question", "marks"]
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSSE 11+ English Comprehension Test Generator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for a nice font and colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'csse-blue': '#1e3a8a', // Dark blue
+                        'csse-light': '#eff6ff', // Light blue background
+                        'csse-accent': '#f59e0b', // Amber/Orange accent
+                    }
+                }
+            }
         }
-      },
-      markingScheme: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: {
-            answer: { type: "STRING", description: "The detailed model answer." },
-            guidance: { type: "STRING", description: "Mark allocation guidance and acceptable alternatives." }
-          },
-          required: ["answer", "guidance"]
+    </script>
+    <style>
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* General box styling */
+        .test-box {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
         }
-      }
-    },
-    required: ["passage", "questions", "markingScheme"]
-  };
+    </style>
+</head>
+<body class="bg-csse-light font-sans antialiased min-h-screen p-4 sm:p-8">
 
-  // API call function with exponential backoff retry logic
-  const fetchWithRetry = useCallback(async (url, options, retries = 3, delay = 1000) => {
-    try {
-      const response = await fetch(url, options);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return await response.json();
-    } catch (err) {
-      if (retries > 0) {
-        await new Promise(res => setTimeout(res, delay));
-        return fetchWithRetry(url, options, retries - 1, delay * 2);
-      } else {
-        console.error("API call failed after retries:", err);
-        throw err;
-      }
-    }
-  }, []);
+    <div id="app" class="max-w-4xl mx-auto">
+        <header class="text-center py-6 mb-8 bg-csse-blue text-white rounded-xl test-box">
+            <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">CSSE 11+ Comprehension Practice</h1>
+            <p class="mt-1 text-csse-light">Powered by AI Passage and Question Generation</p>
+        </header>
 
-  // Main function to generate the test
-  const handleGenerateTest = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    setTestData(null);
-
-    const randomBook = bookList[Math.floor(Math.random() * bookList.length)];
-    setSelectedBook(randomBook);
-
-    const systemPrompt = `You are an expert 11+ tutor specializing in the CSSE (Consortium of Selective Schools in Essex) English exam. Your task is to generate a complete, high-quality comprehension practice test based on a specific book. You must adhere strictly to all requirements and provide your response in the specified JSON format.`;
-    
-    const userQuery = `Generate a practice test for the book: "${randomBook.title}" by ${randomBook.author}.
-    The test must be suitable for the CSSE 11+ standard.
-    The response MUST be a valid JSON object matching the provided schema.
-
-    Requirements:
-    1.  **Passage:** An *exact* extract from the original text of "${randomBook.title}". It must be 20-22 lines long (approximately 250-300 words).
-    2.  **Questions:** Exactly 8-10 questions. The total marks for all questions must sum to *exactly* 20. Ensure marks for individual questions are integers (1, 2, or 3).
-    3.  **Question Types:** Include a mix of:
-        * Literal comprehension (find it)
-        * Inference (read between the lines)
-        * Vocabulary in context (e.g., "What does the word 'X' mean in this context?")
-        * Author's intent/technique (e.g., "Why does the author use the phrase 'Y'?")
-        * Summary/main idea
-    4.  **Marking Scheme:** Provide a detailed model answer for *each* question. The number of marking scheme entries must exactly match the number of questions. Include clear mark allocation (e.g., "1 mark for X, 1 mark for Y") and list acceptable alternative answers or key concepts for multi-mark questions.`;
-    
-    const apiKey = ""; // API key is handled by the environment
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-
-    const payload = {
-      contents: [{ parts: [{ text: userQuery }] }],
-      systemInstruction: {
-        parts: [{ text: systemPrompt }]
-      },
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: responseSchema,
-      }
-    };
-
-    try {
-      const result = await fetchWithRetry(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!result.candidates?.[0]?.content?.parts?.[0]?.text) {
-        throw new Error("Invalid response structure from AI.");
-      }
-
-      const data = JSON.parse(result.candidates[0].content.parts[0].text);
-
-      // Validate the received data
-      if (!data.passage || !Array.isArray(data.questions) || !Array.isArray(data.markingScheme) || data.questions.length === 0 || data.questions.length !== data.markingScheme.length) {
-        throw new Error("The AI generated an invalid test structure. Please try again.");
-      }
-      
-      const totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 0), 0);
-      if (totalMarks < 18 || totalMarks > 22) {
-        console.warn(`AI generated ${totalMarks} marks, not 20.`);
-      }
-      
-      data.totalMarks = totalMarks; // Add total marks to the data object
-      setTestData(data);
-
-    } catch (err) {
-      console.error(err);
-      setError(`Failed to generate the test: ${err.message}. Please try again.`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchWithRetry, responseSchema]);
-
-  // Function to handle PDF downloads
-  const handleDownloadPdf = useCallback(async (type) => {
-    if (!testData || !selectedBook) return;
-
-    // Check if html2pdf is available
-    if (typeof html2pdf === 'undefined') {
-      console.error("html2pdf.js is not loaded.");
-      setError("Failed to generate PDF: PDF library not found.");
-      return;
-    }
-
-    setIsGeneratingPdf(true);
-
-    const element = document.getElementById(type === 'test' ? 'test-paper' : 'marking-scheme');
-    
-    // The marking-scheme div is hidden, so we need to clone it and make it visible for html2pdf
-    let elementToPrint = element;
-    if (type === 'scheme') {
-      elementToPrint = element.cloneNode(true);
-      elementToPrint.style.display = 'block'; // Make it visible
-      elementToPrint.style.padding = '2cm'; // Add print padding
-      document.body.appendChild(elementToPrint); // Add to DOM temporarily
-    }
-
-    const filename = type === 'test' 
-      ? `CSSE_11_Plus_Practice_${selectedBook.title.replace(/\s/g, '_')}.pdf`
-      : `CSSE_11_Plus_Marking_Scheme_${selectedBook.title.replace(/\s/g, '_')}.pdf`;
-
-    const options = {
-      margin: [1.5, 1.5, 1.5, 1.5], // [top, left, bottom, right] in cm
-      filename: filename,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'cm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-    };
-
-    try {
-      // Use html2pdf() directly, as it's loaded as a global function from the CDN
-      await html2pdf().from(elementToPrint).set(options).save();
-    } catch (pdfError) {
-      console.error("Failed to generate PDF:", pdfError);
-      setError(`Failed to generate PDF: ${pdfError.message}`);
-    } finally {
-      // Clean up the cloned node if it exists
-      if (type === 'scheme' && elementToPrint.parentNode === document.body) {
-        document.body.removeChild(elementToPrint);
-      }
-      setIsGeneratingPdf(false);
-    }
-  }, [testData, selectedBook]);
-
-  // Main render method
-  return (
-    <div className="flex flex-col min-h-screen bg-gray-50 font-inter text-gray-800">
-      
-      {/* Header Bar */}
-      <header className="bg-white shadow-md sticky top-0 z-10">
-        <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Brain className="h-8 w-8 text-blue-700" />
-            <h1 className="text-xl md:text-2xl font-bold text-blue-800">
-              CSSE 11+ Practice Generator
-            </h1>
-          </div>
-          <button
-            onClick={handleGenerateTest}
-            disabled={isLoading || isGeneratingPdf}
-            className="flex items-center justify-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? (
-              <>
-                <LoadingSpinner size={20} />
-                <span className="ml-2">Generating...</span>
-              </>
-            ) : (
-              "Generate New Reading Practice"
-            )}
-          </button>
-        </nav>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-8">
-        {/* Loading State */}
-        {isLoading && (
-          <div className="flex flex-col items-center justify-center text-center h-64">
-            <LoadingSpinner size={40} />
-            <h2 className="text-2xl font-semibold text-gray-700 mt-4">Generating Your Practice Test</h2>
-            <p className="text-gray-500 mt-2">
-              Picking a book, extracting a passage, and writing CSSE-style questions...
-            </p>
-          </div>
-        )}
-
-        {/* Error State */}
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative shadow-md" role="alert">
-            <strong className="font-bold mr-2">Generation Failed!</strong>
-            <span className="block sm:inline">{error}</span>
-          </div>
-        )}
-
-        {/* Initial State (No test generated yet) */}
-        {!isLoading && !error && !testData && (
-          <div className="bg-white p-8 md:p-12 rounded-lg shadow-xl border border-gray-100">
-            <div className="text-center">
-              <BookOpen className="h-16 w-16 text-blue-600 mx-auto mb-6" />
-              <h2 className="text-3xl font-bold text-gray-800 mb-4">Welcome to the 11+ Comprehension Generator</h2>
-              <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
-                Click the "Generate New Reading Practice" button to create an authentic CSSE-style comprehension test based on a random book from our curated list.
-              </p>
-            </div>
-            <div className="grid md:grid-cols-3 gap-6 mt-12">
-              <InfoBox title="Authentic Passages" icon={<FileText className="h-10 w-10" />}>
-                Receive a 20-22 line passage extracted directly from a classic or contemporary children's book.
-              </InfoBox>
-              <InfoBox title="CSSE-Style Questions" icon={<Target className="h-10 w-10" />}>
-                Get 8-10 questions for 20 marks, covering inference, vocabulary, and authorial intent.
-              </InfoBox>
-              <InfoBox title="Detailed Marking Scheme" icon={<ClipboardCheck className="h-10 w-10" />}>
-                Download a full set of model answers and marking guidance to review the test.
-              </InfoBox>
-            </div>
-          </div>
-        )}
-
-        {/* Test Generated State */}
-        {!isLoading && !error && testData && (
-          <div className="space-y-6">
-            {/* Header Card with Book Info & Download Buttons */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-              <div className="flex flex-col md:flex-row justify-between md:items-center">
-                <div>
-                  <h2 className="text-3xl font-bold text-blue-800">{selectedBook.title}</h2>
-                  <p className="text-xl text-gray-600 mt-1">by {selectedBook.author}</p>
-                  <p className="text-lg font-medium text-red-600 mt-3">
-                    Time allowed: 20 minutes (plus 5 minutes reading time)
-                  </p>
-                  <p className="text-lg font-bold text-gray-800 mt-1">
-                    Total Marks: {testData.totalMarks}
-                  </p>
-                </div>
-                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 mt-4 md:mt-0">
-                  <button
-                    onClick={() => handleDownloadPdf('test')}
-                    disabled={isGeneratingPdf}
-                    className="flex items-center justify-center w-full sm:w-auto px-5 py-3 bg-green-600 text-white font-medium rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:bg-gray-400 transition-colors"
-                  >
-                    {isGeneratingPdf ? <LoadingSpinner size={20} /> : <FileDown className="h-5 w-5" />}
-                    <span className="ml-2">Download Practice Test</span>
-                  </button>
-                  <button
-                    onClick={() => handleDownloadPdf('scheme')}
-                    disabled={isGeneratingPdf}
-                    className="flex items-center justify-center w-full sm:w-auto px-5 py-3 bg-purple-600 text-white font-medium rounded-lg shadow-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 transition-colors"
-                  >
-                    {isGeneratingPdf ? <LoadingSpinner size={20} /> : <FileDown className="h-5 w-5" />}
-                    <span className="ml-2">Download Marking Scheme</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* The actual test paper (for screen and PDF) */}
-            <div id="test-paper" className="bg-white p-8 md:p-12 rounded-lg shadow-lg border border-gray-200">
-              {/* Header for the PDF */}
-              <div className="text-center mb-8">
-                <h1 className="text-2xl font-bold text-gray-800">
-                  CSSE 11+ English Comprehension Practice
-                </h1>
-              </div>
-              
-              {/* Name and Date fields for the PDF */}
-              <div className="flex justify-between space-x-4 mb-8">
-                <div className="flex-1">
-                  <label htmlFor="studentName" className="block text-sm font-medium text-gray-700">Name:</label>
-                  <div className="mt-1 border-b-2 border-gray-400 h-8"></div>
-                </div>
-                <div className="flex-1">
-                  <label htmlFor="studentDate" className="block text-sm font-medium text-gray-700">Date:</label>
-                  <div className="mt-1 border-b-2 border-gray-400 h-8"></div>
-                </div>
-              </div>
-
-              <p className="text-base text-gray-700 mb-4 italic">
-                Read the passage below, taken from the book <span className="font-bold">{selectedBook.title}</span>, and then answer the questions that follow.
-              </p>
-
-              {/* Passage */}
-              <div className="bg-gray-50 p-6 rounded-md border border-gray-200 shadow-inner">
-                <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap font-serif" style={{ lineHeight: '1.75rem' }}>
-                  {testData.passage}
-                </p>
-              </div>
-
-              {/* Questions */}
-              <div className="mt-8">
-                <h2 className="text-xl font-bold text-gray-800 mb-6">Questions</h2>
-                <ol className="list-decimal list-outside space-y-6 ml-5 text-base">
-                  {testData.questions.map((q, index) => (
-                    <li key={index} className="pl-2">
-                      <p className="text-gray-800 leading-relaxed">{q.question}
-                        <span className="font-bold ml-2 text-gray-600">[{q.marks} {q.marks > 1 ? 'marks' : 'mark'}]</span>
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="text-center p-4 text-sm text-gray-500 border-t border-gray-200 bg-white">
-        CSSE 11+ English Comprehension Practice Generator
-      </footer>
-      
-      {/* Hidden div for the Marking Scheme PDF content. This is targeted by ID. */}
-      {testData && (
-        <div id="marking-scheme" style={{ display: 'none' }}>
-          <div className="p-8">
-            <h1 className="text-2xl font-bold text-center mb-6">
-              CSSE 11+ English Comprehension Practice - Marking Scheme
-            </h1>
-            <h2 className="text-xl font-semibold">{selectedBook.title}</h2>
-            <p className="text-lg mb-4">{selectedBook.author}</p>
-            <h3 className="text-lg font-bold mb-6">
-              Total Marks: {testData.totalMarks}
-            </h3>
-
-            <ol className="list-decimal list-outside space-y-6 ml-5">
-              {testData.markingScheme.map((item, index) => (
-                <li key={index} className="pl-2" style={{ pageBreakInside: 'avoid' }}>
-                  <h4 className="text-base font-bold text-gray-800">
-                    Model Answer (Question {index + 1})
-                  </h4>
-                  <p className="text-base text-gray-700 whitespace-pre-wrap mt-1">{item.answer}</p>
-                  
-                  <h4 className="text-base font-bold text-gray-800 mt-3">
-                    Marking Guidance
-                  </h4>
-                  <p className="text-base text-gray-700 whitespace-pre-wrap mt-1">{item.guidance}</p>
-                </li>
-              ))}
-            </ol>
-          </div>
+        <!-- Loading / Generator Section -->
+        <div id="loading-container" class="test-box bg-white p-6 rounded-xl text-center flex flex-col items-center justify-center min-h-64 transition-opacity duration-500 ease-in-out">
+            <h2 id="loading-text" class="text-2xl font-semibold text-csse-blue mb-4">Generating Your Practice Test...</h2>
+            <div id="spinner" class="animate-spin rounded-full h-12 w-12 border-4 border-t-4 border-csse-accent border-t-csse-blue mb-4"></div>
+            <p class="text-gray-500">Please wait while the AI crafts a new passage and questions.</p>
         </div>
-      )}
 
+        <!-- Error Container -->
+        <div id="error-container" class="hidden test-box bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-xl mb-6" role="alert">
+            <p class="font-bold">Error Generating Content</p>
+            <p id="error-message">A communication error occurred. Please try again.</p>
+        </div>
+
+        <!-- Test Content Section -->
+        <div id="test-container" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Passage Column (Always 1/3) -->
+            <div class="lg:col-span-1 test-box bg-white p-6 rounded-xl h-full lg:sticky lg:top-8" style="max-height: calc(100vh - 4rem);">
+                <h2 class="text-xl font-bold text-csse-blue border-b pb-2 mb-4">Comprehension Passage</h2>
+                <div id="passage-content" class="text-gray-700 space-y-4 overflow-y-auto pr-2 h-full">
+                    <!-- Passage content will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Questions Column (Always 2/3) -->
+            <div class="lg:col-span-2 test-box bg-white p-6 rounded-xl">
+                <h2 class="text-xl font-bold text-csse-blue border-b pb-2 mb-4 flex justify-between items-center">
+                    Questions (Total: <span id="question-count">0</span>)
+                    <button id="regenerate-btn" class="bg-csse-accent text-white px-3 py-1 text-sm font-semibold rounded-lg hover:bg-yellow-600 transition duration-150 shadow-md">
+                        Generate New Test
+                    </button>
+                </h2>
+
+                <div id="questions-list" class="space-y-6">
+                    <!-- Questions will be inserted here -->
+                </div>
+
+                <!-- Submit Button -->
+                <button id="submit-btn" class="mt-8 w-full bg-green-600 text-white py-3 rounded-lg text-lg font-bold hover:bg-green-700 transition duration-150 shadow-lg">
+                    Check Answers
+                </button>
+
+                <!-- Score / Review Section -->
+                <div id="results-container" class="hidden mt-8 p-6 bg-csse-light border-2 border-csse-blue rounded-xl">
+                    <h3 class="text-2xl font-bold text-csse-blue mb-4">Test Results</h3>
+                    <p id="score-text" class="text-xl font-semibold mb-4"></p>
+                    <button id="review-btn" class="bg-csse-blue text-white px-4 py-2 rounded-lg hover:bg-csse-blue/90 transition duration-150">
+                        Review Answers & Explanations
+                    </button>
+                    <button id="start-new-btn" class="ml-4 bg-csse-accent text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition duration-150">
+                        Start New Test
+                    </button>
+                </div>
+
+            </div>
+        </div>
     </div>
-  );
-}
+
+    <script type="module">
+        // Global environment variables (provided by the execution environment)
+        const apiKey = "";
+        const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=" + apiKey;
+
+        // --- DOM Elements ---
+        const app = document.getElementById('app');
+        const loadingContainer = document.getElementById('loading-container');
+        const testContainer = document.getElementById('test-container');
+        const passageContent = document.getElementById('passage-content');
+        const questionsList = document.getElementById('questions-list');
+        const submitBtn = document.getElementById('submit-btn');
+        const resultsContainer = document.getElementById('results-container');
+        const scoreText = document.getElementById('score-text');
+        const reviewBtn = document.getElementById('review-btn');
+        const startNewBtn = document.getElementById('start-new-btn');
+        const regenerateBtn = document.getElementById('regenerate-btn');
+        const questionCountSpan = document.getElementById('question-count');
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+
+        // --- State Management ---
+        let testData = null; // Stores the generated passage and questions
+        let userAnswers = {}; // { questionIndex: selectedOptionText }
+        let isReviewMode = false;
+
+        // --- Core Application Logic ---
+
+        /**
+         * Hides or shows the loading state and test content.
+         * @param {boolean} isLoading
+         */
+        function toggleLoading(isLoading) {
+            if (isLoading) {
+                loadingContainer.classList.remove('hidden');
+                testContainer.classList.add('hidden');
+                errorContainer.classList.add('hidden');
+            } else {
+                loadingContainer.classList.add('hidden');
+                testContainer.classList.remove('hidden');
+            }
+        }
+
+        /**
+         * Shows an error message.
+         * @param {string} message
+         */
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorContainer.classList.remove('hidden');
+            loadingContainer.classList.add('hidden');
+            testContainer.classList.add('hidden');
+        }
+
+        /**
+         * Calls the Gemini API to generate the comprehension test content.
+         */
+        async function generateTestContent() {
+            toggleLoading(true);
+            testData = null;
+            userAnswers = {};
+            isReviewMode = false;
+            hideResults();
+            questionsList.innerHTML = '';
+            passageContent.innerHTML = '';
+
+            const systemInstruction = `You are a test content generator for the CSSE 11+ English Comprehension exam.
+            Your task is to generate a realistic, challenging, and age-appropriate comprehension passage (around 300-400 words) and exactly 5 multiple-choice questions based *only* on the passage.
+
+            The passage should be engaging, descriptive, and focus on narrative or descriptive elements typical of 11+ exams, for example, a historical setting, an adventure, or an intriguing character.
+
+            The 5 questions must cover the following skills:
+            1. Vocabulary in context (finding the meaning of a word used in the passage).
+            2. Inferential comprehension (deducing meaning or implication not explicitly stated).
+            3. Literal recall/fact retrieval (finding a directly stated fact).
+            4. Understanding authorial intent or tone (why the author used certain language).
+            5. Analysis of structural features or figurative language (e.g., simile, metaphor).
+
+            The response must be a single JSON object conforming to the provided schema. Ensure there are exactly 5 questions and each question has exactly 4 options. The rationale for the correct answer should be specific and link directly to the text.`;
+
+            const userQuery = "Generate a new comprehension passage and 5 multiple-choice questions suitable for a CSSE 11+ English practice test.";
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            passage: { type: "STRING", description: "The full comprehension passage text." },
+                            questions: {
+                                type: "ARRAY",
+                                description: "An array of 5 multiple-choice questions.",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        questionText: { type: "STRING" },
+                                        options: {
+                                            type: "ARRAY",
+                                            items: {
+                                                type: "OBJECT",
+                                                properties: {
+                                                    text: { type: "STRING" },
+                                                    isCorrect: { type: "BOOLEAN" },
+                                                    rationale: { type: "STRING", description: "Brief explanation (1-2 sentences) for why this option is correct or incorrect, specifically referencing the passage." }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    required: ["questionText", "options"]
+                                }
+                            }
+                        },
+                        required: ["passage", "questions"]
+                    }
+                }
+            };
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                const textPart = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (!textPart) {
+                    throw new Error("Received an empty response from the API.");
+                }
+
+                const parsedData = JSON.parse(textPart);
+                if (!parsedData.passage || !parsedData.questions || parsedData.questions.length !== 5) {
+                    throw new Error("Incomplete or malformed data structure received from the API.");
+                }
+
+                testData = parsedData;
+                renderTest();
+
+            } catch (error) {
+                console.error("Test generation failed:", error);
+                showError("The test could not be generated. Details: " + error.message);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+
+        /**
+         * Renders the passage and questions to the DOM.
+         */
+        function renderTest() {
+            if (!testData) return;
+
+            // 1. Render Passage
+            passageContent.innerHTML = testData.passage
+                .split('\n')
+                .map(p => p.trim())
+                .filter(p => p.length > 0)
+                .map(p => `<p>${p}</p>`).join('');
+
+            // 2. Render Questions
+            questionsList.innerHTML = '';
+            questionCountSpan.textContent = testData.questions.length;
+
+            testData.questions.forEach((q, index) => {
+                const qElement = document.createElement('div');
+                qElement.id = `q-${index}`;
+                qElement.className = 'p-4 border border-gray-200 rounded-lg bg-gray-50 transition duration-150';
+                
+                let optionsHtml = q.options.map((option, optIndex) => {
+                    const optionId = `q${index}-opt${optIndex}`;
+                    const isSelected = userAnswers[index] === option.text;
+                    const isCorrect = option.isCorrect;
+
+                    let classes = "group flex items-center p-3 rounded-lg cursor-pointer transition duration-150 ease-in-out border hover:bg-csse-light";
+
+                    if (isReviewMode) {
+                        if (isCorrect) {
+                            // Correct answer in review mode
+                            classes += " border-green-500 bg-green-50";
+                        } else if (isSelected && !isCorrect) {
+                            // User selected wrong answer in review mode
+                            classes += " border-red-500 bg-red-50";
+                        } else {
+                            // Unselected wrong answer in review mode
+                            classes += " border-gray-200";
+                        }
+                    } else {
+                        // Regular selection mode
+                        classes += isSelected ? " border-csse-accent bg-yellow-50 shadow-md" : " border-gray-200";
+                    }
+
+                    return `
+                        <label for="${optionId}" class="${classes}">
+                            <input type="${isReviewMode ? 'hidden' : 'radio'}" id="${optionId}" name="question-${index}" value="${option.text}"
+                                class="h-4 w-4 text-csse-blue focus:ring-csse-blue mr-3"
+                                ${isSelected ? 'checked' : ''}
+                                ${isReviewMode ? 'disabled' : ''}
+                                data-question-index="${index}"
+                                data-option-text="${option.text}"
+                                onchange="handleAnswerChange(this)">
+                            <span class="text-gray-800 font-medium">${String.fromCharCode(65 + optIndex)}. ${option.text}</span>
+                        </label>
+                        ${isReviewMode && (isCorrect || (isSelected && !isCorrect)) ?
+                            `<div class="mt-2 text-sm p-3 rounded-lg ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                <span class="font-bold">${isCorrect ? 'Correct:' : 'Incorrect:'}</span> ${option.rationale}
+                            </div>`
+                            : ''
+                        }
+                    `;
+                }).join('');
+
+                qElement.innerHTML = `
+                    <p class="font-semibold text-gray-900 mb-3">Q${index + 1}: ${q.questionText}</p>
+                    <div class="space-y-2">
+                        ${optionsHtml}
+                    </div>
+                `;
+                questionsList.appendChild(qElement);
+            });
+
+            // Update button visibility
+            submitBtn.classList.remove('hidden');
+            if (isReviewMode) {
+                submitBtn.classList.add('hidden');
+            } else {
+                resultsContainer.classList.add('hidden');
+            }
+        }
+
+        // Expose a global function for the radio button onchange event
+        window.handleAnswerChange = (radio) => {
+            const index = radio.getAttribute('data-question-index');
+            const text = radio.getAttribute('data-option-text');
+            userAnswers[index] = text;
+        };
+
+        /**
+         * Calculates the score and switches to results mode.
+         */
+        function checkAnswers() {
+            if (!testData) return;
+
+            const totalQuestions = testData.questions.length;
+            let correctCount = 0;
+
+            testData.questions.forEach((q, index) => {
+                const correctAnswer = q.options.find(opt => opt.isCorrect);
+                if (correctAnswer && userAnswers[index] === correctAnswer.text) {
+                    correctCount++;
+                }
+            });
+
+            scoreText.innerHTML = `You scored <span class="text-3xl font-extrabold text-csse-blue">${correctCount} / ${totalQuestions}</span> (${Math.round((correctCount / totalQuestions) * 100)}%).`;
+            showResults();
+        }
+
+        /**
+         * Shows the results container and sets up the review mode.
+         */
+        function showResults() {
+            resultsContainer.classList.remove('hidden');
+            submitBtn.classList.add('hidden');
+        }
+
+        /**
+         * Hides the results container.
+         */
+        function hideResults() {
+            resultsContainer.classList.add('hidden');
+            submitBtn.classList.remove('hidden');
+            isReviewMode = false;
+        }
+
+        /**
+         * Toggles the review mode on/off.
+         */
+        function toggleReviewMode() {
+            isReviewMode = !isReviewMode;
+            if (isReviewMode) {
+                reviewBtn.textContent = 'Hide Review';
+            } else {
+                reviewBtn.textContent = 'Review Answers & Explanations';
+            }
+            renderTest(); // Re-render questions with feedback
+        }
+
+        // --- Event Listeners ---
+        submitBtn.addEventListener('click', checkAnswers);
+        reviewBtn.addEventListener('click', toggleReviewMode);
+        startNewBtn.addEventListener('click', generateTestContent);
+        regenerateBtn.addEventListener('click', generateTestContent);
+
+        // --- Initialization ---
+        window.onload = generateTestContent;
+
+    </script>
+</body>
+</html>
