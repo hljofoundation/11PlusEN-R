@@ -1,0 +1,460 @@
+import React, { useState, useCallback } from 'react';
+import { Loader2, FileDown, BookOpen, AlertTriangle, CheckCircle, Brain, Target, FileText, ClipboardCheck } from 'lucide-react';
+
+// A curated list of 50 books suitable for 10-11 year olds, as requested.
+const bookList = [
+  { title: "Charlotte's Web", author: "E.B. White" },
+  { title: "The Secret Garden", author: "Frances Hodgson Burnett" },
+  { title: "Matilda", author: "Roald Dahl" },
+  { title: "The Lion, the Witch and the Wardrobe", author: "C.S. Lewis" },
+  { title: "Tom's Midnight Garden", author: "Philippa Pearce" },
+  { title: "Private Peaceful", author: "Michael Morpurgo" },
+  { title: "Goodnight Mister Tom", author: "Michelle Magorian" },
+  { title: "The Borrowers", author: "Mary Norton" },
+  { title: "Stig of the Dump", author: "Clive King" },
+  { title: "Carrie's War", author: "Nina Bawden" },
+  { title: "The Iron Man", author: "Ted Hughes" },
+  { title: "A Little Princess", author: "Frances Hodgson Burnett" },
+  { title: "The Railway Children", author: "E. Nesbit" },
+  { title: "Swallows and Amazons", author: "Arthur Ransome" },
+  { title: "The Wizard of Oz", author: "L. Frank Baum" },
+  { title: "The Hobbit", author: "J.R.R. Tolkien" },
+  { title: "The Wind in the Willows", author: "Kenneth Grahame" },
+  { title: "Peter Pan", author: "J.M. Barrie" },
+  { title: "A Christmas Carol", author: "Charles Dickens" },
+  { title: "The Jungle Book", author: "Rudyard Kipling" },
+  { title: "The Phantom Tollbooth", author: "Norton Juster" },
+  { title: "Journey to the River Sea", author: "Eva Ibbotson" },
+  { title: "Kensuke's Kingdom", author: "Michael Morpurgo" },
+  { title: "A Wrinkle in Time", author: "Madeleine L'Engle" },
+  { title: "Skellig", author: "David Almond" },
+  { title: "The Story of Tracy Beaker", author: "Jacqueline Wilson" },
+  { title: "Millions", author: "Frank Cottrell Boyce" },
+  { title: "The London Eye Mystery", author: "Siobhan Dowd" },
+  { title: "The Dreamsnatcher", author: "Abi Elphinstone" },
+  { title: "Cogheart", author: "Peter Bunzl" },
+  { title: "Floodland", author: "Marcus Sedgwick" },
+  { title: "The House with Chicken Legs", author: "Sophie Anderson" },
+  { title: "The Explorer", author: "Katherine Rundell" },
+  { title: "Asha & The Spirit Bird", author: "Jasbinder Bilan" },
+  { title: "Skandar and the Unicorn Thief", author: "A. F. Steadman" },
+  { title: "Impossible Creatures", author: "Katherine Rundell" },
+  { title: "Holes", author: "Louis Sachar" },
+  { title: "The Northern Lights", author: "Philip Pullman" },
+  { title: "Wonder", author: "R.J. Palacio" },
+  { title: "The Boy in the Striped Pyjamas", author: "John Boyne" },
+  { title: "Wolf Brother", author: "Michelle Paver" },
+  { title: "Varjak Paw", author: "SF Said" },
+  { title: "Holes", author: "Louis Sachar" },
+  { title: "Percy Jackson & The Lightning Thief", author: "Rick Riordan" },
+  { title: "The Girl of Ink & Stars", author: "Kiran Millwood Hargrave" },
+  { title: "Black Beauty", author: "Anna Sewell" },
+  { title: "Little Women", author: "Louisa May Alcott" },
+  { title: "Heidi", author: "Johanna Spyri" },
+  { title: "The Call of the Wild", author: "Jack London" },
+  { title: "Treasure Island", author: "Robert Louis Stevenson" }
+];
+
+// Helper component for loading spinners
+const LoadingSpinner = ({ size = 24 }) => (
+  <Loader2 className={`animate-spin h-${size} w-${size}`} />
+);
+
+// Helper component for info boxes
+const InfoBox = ({ title, icon, children }) => (
+  <div className="bg-white p-8 rounded-lg shadow-md border border-gray-100 flex flex-col items-center text-center">
+    <div className="text-blue-600 mb-4">{icon}</div>
+    <h2 className="text-xl font-semibold text-gray-800 mb-3">{title}</h2>
+    <p className="text-gray-600">{children}</p>
+  </div>
+);
+
+// Main Application Component
+export default function App() {
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [testData, setTestData] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Define the JSON schema for the AI response
+  const responseSchema = {
+    type: "OBJECT",
+    properties: {
+      passage: { 
+        type: "STRING",
+        description: "An exact 20-22 line (250-300 word) passage from the book."
+      },
+      questions: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            question: { type: "STRING", description: "The comprehension question." },
+            marks: { type: "NUMBER", description: "The number of marks (1-3)." }
+          },
+          required: ["question", "marks"]
+        }
+      },
+      markingScheme: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            answer: { type: "STRING", description: "The detailed model answer." },
+            guidance: { type: "STRING", description: "Mark allocation guidance and acceptable alternatives." }
+          },
+          required: ["answer", "guidance"]
+        }
+      }
+    },
+    required: ["passage", "questions", "markingScheme"]
+  };
+
+  // API call function with exponential backoff retry logic
+  const fetchWithRetry = useCallback(async (url, options, retries = 3, delay = 1000) => {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (err) {
+      if (retries > 0) {
+        await new Promise(res => setTimeout(res, delay));
+        return fetchWithRetry(url, options, retries - 1, delay * 2);
+      } else {
+        console.error("API call failed after retries:", err);
+        throw err;
+      }
+    }
+  }, []);
+
+  // Main function to generate the test
+  const handleGenerateTest = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    setTestData(null);
+
+    const randomBook = bookList[Math.floor(Math.random() * bookList.length)];
+    setSelectedBook(randomBook);
+
+    const systemPrompt = `You are an expert 11+ tutor specializing in the CSSE (Consortium of Selective Schools in Essex) English exam. Your task is to generate a complete, high-quality comprehension practice test based on a specific book. You must adhere strictly to all requirements and provide your response in the specified JSON format.`;
+    
+    const userQuery = `Generate a practice test for the book: "${randomBook.title}" by ${randomBook.author}.
+    The test must be suitable for the CSSE 11+ standard.
+    The response MUST be a valid JSON object matching the provided schema.
+
+    Requirements:
+    1.  **Passage:** An *exact* extract from the original text of "${randomBook.title}". It must be 20-22 lines long (approximately 250-300 words).
+    2.  **Questions:** Exactly 8-10 questions. The total marks for all questions must sum to *exactly* 20. Ensure marks for individual questions are integers (1, 2, or 3).
+    3.  **Question Types:** Include a mix of:
+        * Literal comprehension (find it)
+        * Inference (read between the lines)
+        * Vocabulary in context (e.g., "What does the word 'X' mean in this context?")
+        * Author's intent/technique (e.g., "Why does the author use the phrase 'Y'?")
+        * Summary/main idea
+    4.  **Marking Scheme:** Provide a detailed model answer for *each* question. The number of marking scheme entries must exactly match the number of questions. Include clear mark allocation (e.g., "1 mark for X, 1 mark for Y") and list acceptable alternative answers or key concepts for multi-mark questions.`;
+    
+    const apiKey = ""; // API key is handled by the environment
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+    const payload = {
+      contents: [{ parts: [{ text: userQuery }] }],
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: responseSchema,
+      }
+    };
+
+    try {
+      const result = await fetchWithRetry(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!result.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error("Invalid response structure from AI.");
+      }
+
+      const data = JSON.parse(result.candidates[0].content.parts[0].text);
+
+      // Validate the received data
+      if (!data.passage || !Array.isArray(data.questions) || !Array.isArray(data.markingScheme) || data.questions.length === 0 || data.questions.length !== data.markingScheme.length) {
+        throw new Error("The AI generated an invalid test structure. Please try again.");
+      }
+      
+      const totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 0), 0);
+      if (totalMarks < 18 || totalMarks > 22) {
+        console.warn(`AI generated ${totalMarks} marks, not 20.`);
+      }
+      
+      data.totalMarks = totalMarks; // Add total marks to the data object
+      setTestData(data);
+
+    } catch (err) {
+      console.error(err);
+      setError(`Failed to generate the test: ${err.message}. Please try again.`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchWithRetry, responseSchema]);
+
+  // Function to handle PDF downloads
+  const handleDownloadPdf = useCallback(async (type) => {
+    if (!testData || !selectedBook) return;
+
+    // Check if html2pdf is available
+    if (typeof html2pdf === 'undefined') {
+      console.error("html2pdf.js is not loaded.");
+      setError("Failed to generate PDF: PDF library not found.");
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+
+    const element = document.getElementById(type === 'test' ? 'test-paper' : 'marking-scheme');
+    
+    // The marking-scheme div is hidden, so we need to clone it and make it visible for html2pdf
+    let elementToPrint = element;
+    if (type === 'scheme') {
+      elementToPrint = element.cloneNode(true);
+      elementToPrint.style.display = 'block'; // Make it visible
+      elementToPrint.style.padding = '2cm'; // Add print padding
+      document.body.appendChild(elementToPrint); // Add to DOM temporarily
+    }
+
+    const filename = type === 'test' 
+      ? `CSSE_11_Plus_Practice_${selectedBook.title.replace(/\s/g, '_')}.pdf`
+      : `CSSE_11_Plus_Marking_Scheme_${selectedBook.title.replace(/\s/g, '_')}.pdf`;
+
+    const options = {
+      margin: [1.5, 1.5, 1.5, 1.5], // [top, left, bottom, right] in cm
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'cm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    try {
+      // Use html2pdf() directly, as it's loaded as a global function from the CDN
+      await html2pdf().from(elementToPrint).set(options).save();
+    } catch (pdfError) {
+      console.error("Failed to generate PDF:", pdfError);
+      setError(`Failed to generate PDF: ${pdfError.message}`);
+    } finally {
+      // Clean up the cloned node if it exists
+      if (type === 'scheme' && elementToPrint.parentNode === document.body) {
+        document.body.removeChild(elementToPrint);
+      }
+      setIsGeneratingPdf(false);
+    }
+  }, [testData, selectedBook]);
+
+  // Main render method
+  return (
+    <div className="flex flex-col min-h-screen bg-gray-50 font-inter text-gray-800">
+      
+      {/* Header Bar */}
+      <header className="bg-white shadow-md sticky top-0 z-10">
+        <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Brain className="h-8 w-8 text-blue-700" />
+            <h1 className="text-xl md:text-2xl font-bold text-blue-800">
+              CSSE 11+ Practice Generator
+            </h1>
+          </div>
+          <button
+            onClick={handleGenerateTest}
+            disabled={isLoading || isGeneratingPdf}
+            className="flex items-center justify-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? (
+              <>
+                <LoadingSpinner size={20} />
+                <span className="ml-2">Generating...</span>
+              </>
+            ) : (
+              "Generate New Reading Practice"
+            )}
+          </button>
+        </nav>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-8">
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center text-center h-64">
+            <LoadingSpinner size={40} />
+            <h2 className="text-2xl font-semibold text-gray-700 mt-4">Generating Your Practice Test</h2>
+            <p className="text-gray-500 mt-2">
+              Picking a book, extracting a passage, and writing CSSE-style questions...
+            </p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative shadow-md" role="alert">
+            <strong className="font-bold mr-2">Generation Failed!</strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+
+        {/* Initial State (No test generated yet) */}
+        {!isLoading && !error && !testData && (
+          <div className="bg-white p-8 md:p-12 rounded-lg shadow-xl border border-gray-100">
+            <div className="text-center">
+              <BookOpen className="h-16 w-16 text-blue-600 mx-auto mb-6" />
+              <h2 className="text-3xl font-bold text-gray-800 mb-4">Welcome to the 11+ Comprehension Generator</h2>
+              <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
+                Click the "Generate New Reading Practice" button to create an authentic CSSE-style comprehension test based on a random book from our curated list.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6 mt-12">
+              <InfoBox title="Authentic Passages" icon={<FileText className="h-10 w-10" />}>
+                Receive a 20-22 line passage extracted directly from a classic or contemporary children's book.
+              </InfoBox>
+              <InfoBox title="CSSE-Style Questions" icon={<Target className="h-10 w-10" />}>
+                Get 8-10 questions for 20 marks, covering inference, vocabulary, and authorial intent.
+              </InfoBox>
+              <InfoBox title="Detailed Marking Scheme" icon={<ClipboardCheck className="h-10 w-10" />}>
+                Download a full set of model answers and marking guidance to review the test.
+              </InfoBox>
+            </div>
+          </div>
+        )}
+
+        {/* Test Generated State */}
+        {!isLoading && !error && testData && (
+          <div className="space-y-6">
+            {/* Header Card with Book Info & Download Buttons */}
+            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+              <div className="flex flex-col md:flex-row justify-between md:items-center">
+                <div>
+                  <h2 className="text-3xl font-bold text-blue-800">{selectedBook.title}</h2>
+                  <p className="text-xl text-gray-600 mt-1">by {selectedBook.author}</p>
+                  <p className="text-lg font-medium text-red-600 mt-3">
+                    Time allowed: 20 minutes (plus 5 minutes reading time)
+                  </p>
+                  <p className="text-lg font-bold text-gray-800 mt-1">
+                    Total Marks: {testData.totalMarks}
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 mt-4 md:mt-0">
+                  <button
+                    onClick={() => handleDownloadPdf('test')}
+                    disabled={isGeneratingPdf}
+                    className="flex items-center justify-center w-full sm:w-auto px-5 py-3 bg-green-600 text-white font-medium rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:bg-gray-400 transition-colors"
+                  >
+                    {isGeneratingPdf ? <LoadingSpinner size={20} /> : <FileDown className="h-5 w-5" />}
+                    <span className="ml-2">Download Practice Test</span>
+                  </button>
+                  <button
+                    onClick={() => handleDownloadPdf('scheme')}
+                    disabled={isGeneratingPdf}
+                    className="flex items-center justify-center w-full sm:w-auto px-5 py-3 bg-purple-600 text-white font-medium rounded-lg shadow-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 transition-colors"
+                  >
+                    {isGeneratingPdf ? <LoadingSpinner size={20} /> : <FileDown className="h-5 w-5" />}
+                    <span className="ml-2">Download Marking Scheme</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* The actual test paper (for screen and PDF) */}
+            <div id="test-paper" className="bg-white p-8 md:p-12 rounded-lg shadow-lg border border-gray-200">
+              {/* Header for the PDF */}
+              <div className="text-center mb-8">
+                <h1 className="text-2xl font-bold text-gray-800">
+                  CSSE 11+ English Comprehension Practice
+                </h1>
+              </div>
+              
+              {/* Name and Date fields for the PDF */}
+              <div className="flex justify-between space-x-4 mb-8">
+                <div className="flex-1">
+                  <label htmlFor="studentName" className="block text-sm font-medium text-gray-700">Name:</label>
+                  <div className="mt-1 border-b-2 border-gray-400 h-8"></div>
+                </div>
+                <div className="flex-1">
+                  <label htmlFor="studentDate" className="block text-sm font-medium text-gray-700">Date:</label>
+                  <div className="mt-1 border-b-2 border-gray-400 h-8"></div>
+                </div>
+              </div>
+
+              <p className="text-base text-gray-700 mb-4 italic">
+                Read the passage below, taken from the book <span className="font-bold">{selectedBook.title}</span>, and then answer the questions that follow.
+              </p>
+
+              {/* Passage */}
+              <div className="bg-gray-50 p-6 rounded-md border border-gray-200 shadow-inner">
+                <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap font-serif" style={{ lineHeight: '1.75rem' }}>
+                  {testData.passage}
+                </p>
+              </div>
+
+              {/* Questions */}
+              <div className="mt-8">
+                <h2 className="text-xl font-bold text-gray-800 mb-6">Questions</h2>
+                <ol className="list-decimal list-outside space-y-6 ml-5 text-base">
+                  {testData.questions.map((q, index) => (
+                    <li key={index} className="pl-2">
+                      <p className="text-gray-800 leading-relaxed">{q.question}
+                        <span className="font-bold ml-2 text-gray-600">[{q.marks} {q.marks > 1 ? 'marks' : 'mark'}]</span>
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="text-center p-4 text-sm text-gray-500 border-t border-gray-200 bg-white">
+        CSSE 11+ English Comprehension Practice Generator
+      </footer>
+      
+      {/* Hidden div for the Marking Scheme PDF content. This is targeted by ID. */}
+      {testData && (
+        <div id="marking-scheme" style={{ display: 'none' }}>
+          <div className="p-8">
+            <h1 className="text-2xl font-bold text-center mb-6">
+              CSSE 11+ English Comprehension Practice - Marking Scheme
+            </h1>
+            <h2 className="text-xl font-semibold">{selectedBook.title}</h2>
+            <p className="text-lg mb-4">{selectedBook.author}</p>
+            <h3 className="text-lg font-bold mb-6">
+              Total Marks: {testData.totalMarks}
+            </h3>
+
+            <ol className="list-decimal list-outside space-y-6 ml-5">
+              {testData.markingScheme.map((item, index) => (
+                <li key={index} className="pl-2" style={{ pageBreakInside: 'avoid' }}>
+                  <h4 className="text-base font-bold text-gray-800">
+                    Model Answer (Question {index + 1})
+                  </h4>
+                  <p className="text-base text-gray-700 whitespace-pre-wrap mt-1">{item.answer}</p>
+                  
+                  <h4 className="text-base font-bold text-gray-800 mt-3">
+                    Marking Guidance
+                  </h4>
+                  <p className="text-base text-gray-700 whitespace-pre-wrap mt-1">{item.guidance}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
